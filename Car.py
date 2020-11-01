@@ -46,14 +46,9 @@ class Car:
 
         self.v = self.v if self.v > self.v_treshold else 0.0
 
-        print("a: ", self.a)
-        print("v: ", self.v)
-
         dx = self.v * timestep * cos(radians(self.orientation))
         dy = self.v * timestep * sin(radians(self.orientation))
         self.position += np.array([dx, dy], dtype="float")
-        print("Orientation: ", self.orientation)
-        print("Position: ", self.position)
 
     def get_orientation(self):
         return self.orientation

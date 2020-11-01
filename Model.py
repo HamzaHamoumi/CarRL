@@ -17,7 +17,7 @@ class Model:
                     self.map_model[x][y] = 1
 
 
-        self.car = Car(int(75 * 2.17), 75, np.array([0, 0], dtype="float"))
+        self.car = Car(int(50 * 2.17), 50, np.array([960, 200], dtype="float"))
 
     def get_map_model(self):
         return self.map_model.copy()
