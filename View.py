@@ -23,15 +23,17 @@ class View():
 
         self.car_surface = pygame.image.load(os.path.join(View.asset_path, View.car_filename))
         self.previous_car_coordinates = self.transformCoordinates(np.zeros(2)) - model_data["car"]["carSize"].astype("int") / 2
+        self.textRect = None
 
     def update(self, model_data, results_prev):
-        start = time.time()
+        # Current Car Surface
         car_surface_transformed = pygame.transform.scale(self.car_surface, model_data["car"]["carSize"].astype("int"))
         car_surface_transformed = pygame.transform.rotate(car_surface_transformed, model_data["car"]["carOrientation"])
         car_surface_size = np.array(car_surface_transformed.get_size(), dtype="int")
         car_coordinates = self.transformCoordinates(model_data["car"]["carPosition"]).astype("int") - car_surface_size / 2
         car_rect = pygame.Rect(car_coordinates, car_surface_size)
 
+        # Previous Car surface to clean
         x = max(self.previous_car_coordinates[0], 0)
         y = max(self.previous_car_coordinates[1], 0)
         w = min(self.previous_car_coordinates[0] + 2 * car_surface_size[0], model_data["map_model"].shape[0]) - x
@@ -44,14 +46,36 @@ class View():
         map_rgb[:, :, 0] = map_model * 255
         map_rgb[:, :, 1] = map_model * 255
         map_rgb[:, :, 2] = map_model * 255
-        end = time.time()
-        print(f"Runtime of the program is {end - start}")
         map_model_surface = pygame.surfarray.make_surface(map_rgb)
         self.surface.blit(map_model_surface, map_rect_to_update)
 
-        #self.surface.fill(pygame.Color(255, 255, 255))
+        # Clean Text rect
+        if(self.textRect != None):
+            map_model_text = model_data["map_model"][self.textRect.x: self.textRect.x + self.textRect.w, self.textRect.y: self.textRect.y + self.textRect.h]
+            map_model_text = np.absolute(map_model_text - 1)
+            map_rgb_text = np.zeros((map_model_text.shape[0], map_model_text.shape[1], 3))
+            map_rgb_text[:, :, 0] = map_model_text * 255
+            map_rgb_text[:, :, 1] = map_model_text * 255
+            map_rgb_text[:, :, 2] = map_model_text * 255
+            map_model_text_surface = pygame.surfarray.make_surface(map_rgb_text)
+            self.surface.blit(map_model_text_surface, self.textRect)
 
+        # Render Car
         self.surface.blit(car_surface_transformed, car_coordinates)
+
+        # Display Text information
+        font = pygame.font.SysFont("Arial", 30, True, False)
+        textStr = "Collision: " + ("True" if model_data["collision"] else "False")
+        textStr += "\nScore: " + str(model_data["score"])
+        text = font.render(textStr, True, (0, 0, 0))
+        textRect = text.get_rect()
+        textRect.move(20, 20)
+        self.surface.blit(text, textRect)
+        self.textRect = textRect
+
+        # Update the screen surface
+        pygame.display.update([map_rect_to_update, car_rect, textRect])
+        self.previous_car_coordinates = car_coordinates
 
         # Check user inputs
         results = {
@@ -90,9 +114,6 @@ class View():
                 elif event.key == pygame.K_RIGHT:
                     print("you released the right key")
                     results["moveInput"][3] = 0
-
-        pygame.display.update([map_rect_to_update, car_rect])
-        self.previous_car_coordinates = car_coordinates
 
         return results
 

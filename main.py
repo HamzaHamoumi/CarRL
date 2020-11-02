@@ -1,6 +1,10 @@
+import sys
 from Controller import Controller
 
 
 if __name__ == '__main__':
-    controller = Controller()
-    controller.run_game()
+    if len(sys.argv) > 1:
+        controller = Controller(sys.argv[1])
+    else:
+        controller = Controller()
+    controller.start()
