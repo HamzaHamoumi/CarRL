@@ -8,6 +8,9 @@ class Model:
         #self.map_model = np.random.randint(0, high=2, size=(width, height), dtype=int)
         if(mode == "run"):
             self.map_model = np.zeros((width, height), dtype="int")
+            self.map_model[:, 0:200] = 1
+            self.map_model[:, 400:600] = 1
+            """
             for x in range(self.map_model.shape[0]):
                 for y in range(self.map_model.shape[1]):
                     if (x-width/2)**2 + (y-height/2)**2 > 200**2 and (x-width/2)**2 + (y-height/2)**2 < 250**2:
@@ -17,14 +20,15 @@ class Model:
                 for y in range(self.map_model.shape[1]):
                     if (x-width/2)**2 + (y-height/2)**2 > 450**2 and (x-width/2)**2 + (y-height/2)**2 < 500**2:
                         self.map_model[x][y] = 1
-
-
-            self.car = Car(int(50 * 2.17), 50, np.array([960, 200], dtype="float"))
-            self.collision = False
-            self.score = 0
-        
+            """
         else:
             self.map_model = np.zeros((width, height), dtype="int")
+            self.map_model[:, 0:200] = 1
+            self.map_model[:, 400:600] = 1
+        
+        self.car = Car(int(50 * 2.17), 50, np.array([960, 200], dtype="float"))
+        self.collision = False
+        self.score = 0
 
     def get_map_model(self):
         return self.map_model.copy()
@@ -41,6 +45,9 @@ class Model:
     def update(self, action, timestep):
         self.car.move(action, timestep)
         self.check_collision()
+    
+    def updateOnEdit(self):
+        None
 
     def check_collision(self):
         orientation = radians(self.car.get_orientation())
