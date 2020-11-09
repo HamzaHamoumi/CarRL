@@ -1,37 +1,48 @@
 from Car import Car
 import numpy as np
-from math import cos, sin, radians
+from math import cos, sin, radians, sqrt
+import os
 
 
 class Model:
-    def __init__(self, width, height, mode):
-        #self.map_model = np.random.randint(0, high=2, size=(width, height), dtype=int)
-        if(mode == "run"):
-            self.map_model = np.zeros((width, height), dtype="int")
-            self.map_model[:, 0:200] = 1
-            self.map_model[:, 400:600] = 1
-            """
-            for x in range(self.map_model.shape[0]):
-                for y in range(self.map_model.shape[1]):
-                    if (x-width/2)**2 + (y-height/2)**2 > 200**2 and (x-width/2)**2 + (y-height/2)**2 < 250**2:
-                        self.map_model[x][y] = 1
+    map_dir = os.path.join(".\\Maps")
+    collision_mallus = 1000
+    time_mallus = 50
+    checkpoint_crossed_bonus = 100
+    distance_bonus = 0.5
+    def __init__(self, width, height, mode, map_name):
+        # Load map file
+        self.create_map_dir()
+        # Load map model
+        self.map_name = map_name
+        if(os.path.exists(os.path.join(Model.map_dir, self.map_name + ".npz"))):
+            model_file = np.load(os.path.join(Model.map_dir, self.map_name + ".npz"))
+            if("map_model" in model_file.files):
+                self.map_model = model_file["map_model"]
+            else:
+                print("Corrupted Map file")
 
-            for x in range(self.map_model.shape[0]):
-                for y in range(self.map_model.shape[1]):
-                    if (x-width/2)**2 + (y-height/2)**2 > 450**2 and (x-width/2)**2 + (y-height/2)**2 < 500**2:
-                        self.map_model[x][y] = 1
-            """
+            if("car_pos" in model_file.files):
+                self.car = Car(int(25 * 2.17), 25, model_file["car_pos"])
+            else:
+                print("Corrupted Map file")
+            
+            if("checkpoints" in model_file.files):
+                self.checkpoints = model_file["checkpoints"]
+            model_file.close()
         else:
             self.map_model = np.zeros((width, height), dtype="int")
-            self.map_model[:, 0:200] = 1
-            self.map_model[:, 400:600] = 1
-        
-        self.car = Car(int(50 * 2.17), 50, np.array([960, 200], dtype="float"))
+            self.car = Car(int(25 * 2.17), 25, self.get_center())
+            self.checkpoints = np.array([], dtype="float")
+
         self.collision = False
         self.score = 0
 
     def get_map_model(self):
         return self.map_model.copy()
+
+    def get_map_model_size(self):
+        return self.map_model.shape
 
     def get_car_orientation(self):
         return self.car.get_orientation()
@@ -42,12 +53,81 @@ class Model:
     def get_score(self):
         return self.score
 
-    def update(self, action, timestep):
-        self.car.move(action, timestep)
-        self.check_collision()
+    def get_center(self):
+        return np.array(self.get_map_model_size(), dtype="float") / 2
+
+    def get_checkpoints(self):
+        return self.checkpoints.copy()
+
+    def add_checkpoint(self, checkpoint):
+        if(self.checkpoints.size > 0):
+            self.checkpoints = np.append(self.checkpoints, checkpoint, axis=0)
+        else:
+            self.checkpoints = checkpoint.astype("float")
     
-    def updateOnEdit(self):
-        None
+    def remove_checkpoint(self, pos, margin):
+        if(self.checkpoints.size > 0):
+            for i in range(self.checkpoints.shape[0]):
+                checkpoint = self.checkpoints[i]
+                m = (checkpoint[1][1] - checkpoint[0][1]) / (checkpoint[1][0] - checkpoint[0][0])
+                p = checkpoint[0][1] - m * checkpoint[0][0]
+                min_x = min(checkpoint[0][0], checkpoint[1][0]) - margin
+                max_x = max(checkpoint[0][0], checkpoint[1][0]) + margin
+                distance_point_to_checkpoint = abs(-m * pos[0] + pos[1] - p) / sqrt(m**2 + 1)
+                if( distance_point_to_checkpoint < margin and pos[0] > min_x and pos[0] < max_x):
+                    self.checkpoints = np.delete(self.checkpoints, i, 0)
+                    break
+
+    def check_checkpoints_crossed(self, prev_car_pos, next_car_pos):
+        nb_checkpoint_crossed = 0
+        if(self.checkpoints.size > 0):
+            orientation = radians(90)
+            rot_matrix = np.array([[cos(orientation), sin(orientation)],[-sin(orientation), cos(orientation)]])
+            for checkpoint in self.checkpoints:
+                vect_checkpoint = checkpoint[1] - checkpoint[0]
+                vect_perpendicular_checkpoint = vect_checkpoint.dot(rot_matrix)
+                center_point = (checkpoint[0] + checkpoint[1]) / 2
+                vect_center_to_prev_pos = prev_car_pos - center_point
+                vect_center_to_next_pos = next_car_pos - center_point
+                if vect_center_to_prev_pos.dot(vect_perpendicular_checkpoint) <= 0 and vect_center_to_next_pos.dot(vect_perpendicular_checkpoint) > 0:
+                    nb_checkpoint_crossed += 1
+        return nb_checkpoint_crossed
+
+    def update(self, action, timestep):
+        prev_car_pos = self.car.get_position()
+        self.car.move(action, timestep)
+        next_car_pos = self.car.get_position()
+        self.check_collision()
+        if(not self.collision):
+            self.score += Model.distance_bonus * np.linalg.norm(next_car_pos - prev_car_pos)
+            self.score -= Model.time_mallus * timestep
+            self.score += Model.checkpoint_crossed_bonus * self.check_checkpoints_crossed(prev_car_pos, next_car_pos)
+        else:
+            self.score -= Model.collision_mallus
+
+    def is_point_inside(self, point):
+        model_size = self.get_map_model_size()
+        return point[0] >= 0 and point[0] < model_size[0] and point[1] >= 0 and point[1] < model_size[1]
+    
+    def remove_outside_points(self, points):
+        if(points.size > 0 and points.ndim == 2):
+            filter = []
+            for i in range(points.shape[0]):
+                filter.append(self.is_point_inside(points[i]))
+            return points[filter]
+
+    def updateOnEdit(self, action):
+        if(action["car_pos"].size > 0):
+            if(self.is_point_inside(action["car_pos"])):
+                self.car.set_position(action["car_pos"][0], action["car_pos"][1])
+
+        if(action["points_selected"].size > 0 and action["points_selected"].ndim == 2):
+            action["points_selected"] = self.remove_outside_points(action["points_selected"])
+            self.map_model[action["points_selected"][:,0], action["points_selected"][:,1]] = 1
+
+        if(action["points_unselected"].size > 0 and action["points_unselected"].ndim == 2):
+            action["points_unselected"] = self.remove_outside_points(action["points_unselected"])
+            self.map_model[action["points_unselected"][:,0], action["points_unselected"][:,1]] = 0
 
     def check_collision(self):
         orientation = radians(self.car.get_orientation())
@@ -83,3 +163,12 @@ class Model:
         else:
             print("Collision: ", False)
             self.collision = False
+
+    def save_model(self):
+        self.create_map_dir()
+        np.savez(os.path.join(Model.map_dir, self.map_name), map_model=self.get_map_model(), car_pos=self.car.get_position(), checkpoints=self.get_checkpoints())
+        print("Map saved")
+    
+    def create_map_dir(self):
+        if not os.path.exists(Model.map_dir) or not os.path.isdir(Model.map_dir):
+            os.mkdir(Model.map_dir)

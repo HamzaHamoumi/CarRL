@@ -1,12 +1,13 @@
 import numpy as np
-from math import cos, sin, radians, pow, sqrt
+from math import cos, sin, radians, pow, sqrt, exp
 
 class Car:
     def __init__(self, width, length, position):
         self.size = np.array([width, length], dtype="float")
-        self.position = position
+        self.position = np.array(position, dtype="float")
         self.orientation = 0
-        self.angle_coeff1 = 50
+        self.angle_per_sec = 90
+        self.angle_coeff1 = 1000#50
         self.angle_coeff2 = 0.001
         self.angle_coeff3 = 15000
         self.v = 0
@@ -21,6 +22,9 @@ class Car:
 
     def get_position(self):
         return self.position.copy()
+    
+    def set_position(self, x, y):
+        self.position = np.array([x,y])
 
     def get_size(self):
         return self.size
@@ -33,11 +37,13 @@ class Car:
 
     def move(self, action, timestep):
         # change orientation
-        self.orientation += self.angle_coeff1 * pow(self.v, 2)/( self.angle_coeff2 * pow(self.v,3) + self.angle_coeff3) \
-                            * (action[2] - action[3]) * timestep
+        if(self.v != 0):
+            self.orientation += (action[2] - action[3]) * self.angle_per_sec * timestep * exp(-self.v / self.angle_coeff1)
+            self.orientation %= 360
+        #self.orientation += self.angle_coeff1 * pow(self.v, 2)/( self.angle_coeff2 * pow(self.v,3) + self.angle_coeff3) \
+        #                    * (action[2] - action[3]) * timestep
         #self.orientation += self.angle_coeff1 * sqrt(self.v) / (pow(self.v, 3) + self.angle_coeff2) * (
                     #action[2] - action[3]) * timestep
-        self.orientation %= 360
 
         # estimate next acceleration, speed and position
         mu_tot = self.mu_fr +  self.mu_brake_fr * (1 if (action[1] - action[0]) > 0 else 0)
