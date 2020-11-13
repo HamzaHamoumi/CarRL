@@ -19,6 +19,7 @@ class Car:
         self.course = 0.0946
         self.nb_cylindre = 3
         self.masse = 1300
+        self.wall_detection = None
 
     def get_position(self):
         return self.position.copy()
@@ -58,3 +59,18 @@ class Car:
 
     def get_orientation(self):
         return self.orientation
+
+    def set_wall_detection(self, orientation, position):
+        if self.wall_detection == None:
+            self.wall_detection = {
+                round(orientation)%360: position
+            }
+        else:
+            self.wall_detection[round(orientation)%360] = position
+    
+    def get_wall_detection(self, orientation):
+        orientation = round(orientation)%360
+        if self.wall_detection != None and orientation in self.wall_detection:
+            return self.wall_detection[orientation]
+        else:
+            return np.array([], dtype="int")

@@ -1,6 +1,6 @@
 from Car import Car
 import numpy as np
-from math import cos, sin, radians, sqrt
+from math import cos, sin, tan, radians, sqrt
 import os
 
 
@@ -10,6 +10,9 @@ class Model:
     time_mallus = 50
     checkpoint_crossed_bonus = 100
     distance_bonus = 0.5
+    detectors_orientation = [-90, -45, 0, 45, 90]
+    detection_search_step = 1
+
     def __init__(self, width, height, mode, map_name):
         # Load map file
         self.create_map_dir()
@@ -33,10 +36,13 @@ class Model:
         else:
             self.map_model = np.zeros((width, height), dtype="int")
             self.car = Car(int(25 * 2.17), 25, self.get_center())
+            self.car.set_wall_detection(0, self.detect_wall(self.car.get_orientation()))
             self.checkpoints = np.array([], dtype="float")
 
         self.collision = False
         self.score = 0
+        for detector_orientation in Model.detectors_orientation:
+            self.car.set_wall_detection(detector_orientation, self.detect_wall(self.car.get_orientation() + detector_orientation))
 
     def get_map_model(self):
         return self.map_model.copy()
@@ -65,6 +71,12 @@ class Model:
         else:
             self.checkpoints = checkpoint.astype("float")
     
+    def get_wall_detections(self):
+        wall_detections = []
+        for detector_orientation in Model.detectors_orientation:
+            wall_detections.append(self.car.get_wall_detection(detector_orientation))
+        return np.array(wall_detections)
+
     def remove_checkpoint(self, pos, margin):
         if(self.checkpoints.size > 0):
             for i in range(self.checkpoints.shape[0]):
@@ -102,8 +114,38 @@ class Model:
             self.score += Model.distance_bonus * np.linalg.norm(next_car_pos - prev_car_pos)
             self.score -= Model.time_mallus * timestep
             self.score += Model.checkpoint_crossed_bonus * self.check_checkpoints_crossed(prev_car_pos, next_car_pos)
+            for detector_orientation in Model.detectors_orientation:
+                self.car.set_wall_detection(detector_orientation, self.detect_wall(self.car.get_orientation() + detector_orientation))
         else:
             self.score -= Model.collision_mallus
+
+    def detect_wall(self, direction):
+        car_pos = self.car.get_position()
+        if not direction%360 in [90, 270]:
+            m = tan(radians(direction))
+            p = car_pos[1] - m * car_pos[0]
+            delta_x_direction = cos(radians(direction)) / abs(cos(radians(direction)))
+            delta_x = delta_x_direction * sqrt(1 / (1 + m**2)) * Model.detection_search_step
+            cursor = car_pos.copy()
+            wall_found = False
+            while self.is_point_inside(np.around(cursor)) and not wall_found:
+                if self.map_model[round(cursor[0]), round(cursor[1])] == 1:
+                    wall_found = True
+                else:
+                    cursor[0] += delta_x
+                    cursor[1] = m * cursor[0] + p
+        else:
+            cursor = car_pos.copy()
+            delta_y_direction = sin(radians(direction)) / abs(sin(radians(direction)))
+            delta_y = delta_y_direction * Model.detection_search_step
+            wall_found = False
+            while self.is_point_inside(np.around(cursor)) and not wall_found:
+                if self.map_model[round(cursor[0]), round(cursor[1])] == 1:
+                    wall_found = True
+                else:
+                    cursor[1] += delta_y
+
+        return cursor
 
     def is_point_inside(self, point):
         model_size = self.get_map_model_size()

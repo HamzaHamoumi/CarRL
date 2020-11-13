@@ -17,13 +17,12 @@ class View():
         
         self.surface = pygame.display.set_mode((model_data["map_model"].shape[0], model_data["map_model"].shape[1]))
         map_model = np.absolute(model_data["map_model"] - 1) * 255
-        self.surface.blit(pygame.surfarray.make_surface(map_model), pygame.Rect(0,0,0,0))
+        self.map_background = pygame.surfarray.make_surface(map_model)
+        self.surface.blit(self.map_background, pygame.Rect(0,0,0,0))
         pygame.display.flip()
 
         self.car_surface = pygame.image.load(os.path.join(View.asset_path, View.car_filename))
         car_coordinates = model_data["car"]["carPosition"].astype("int") - model_data["car"]["carSize"].astype("int") / 2
-        self.previous_car_rect = pygame.Rect((car_coordinates), car_coordinates + model_data["car"]["carSize"].astype("int") / 2)
-        self.textRect = None
         
         self.mouseLeftClicked = False
         self.mouseRightClicked = False
@@ -31,6 +30,9 @@ class View():
         self.checkpoint1_pos = np.array([], dtype="int")
 
     def update(self, model_data, results_prev):
+        # Clean the map - redraw the map background
+        self.surface.blit(self.map_background, pygame.Rect(0,0,0,0))
+
         # Current Car Surface
         car_surface_transformed = pygame.transform.scale(self.car_surface, model_data["car"]["carSize"].astype("int"))
         car_surface_transformed = pygame.transform.rotate(car_surface_transformed, model_data["car"]["carOrientation"])
@@ -38,29 +40,10 @@ class View():
         car_coordinates = model_data["car"]["carPosition"].astype("int") - car_surface_size / 2
         car_rect = pygame.Rect(car_coordinates, car_surface_size)
 
-        # Previous Car surface to clean
-        x = max(self.previous_car_rect.x, 0)
-        y = max(self.previous_car_rect.y, 0)
-        w = min(self.previous_car_rect.x + self.previous_car_rect.w, model_data["map_model"].shape[0]) - x
-        h = min(self.previous_car_rect.y + self.previous_car_rect.h, model_data["map_model"].shape[1]) - y
-        map_rect_to_update = pygame.Rect(x,y,w,h)
-
-        map_model = model_data["map_model"][x: x + w, y: y + h]
-        map_model = np.absolute(map_model - 1) * 255
-        map_model_surface = pygame.surfarray.make_surface(map_model)
-        self.surface.blit(map_model_surface, map_rect_to_update)
-
-        # Clean Text rect
-        if(self.textRect != None):
-            map_model_text = model_data["map_model"][self.textRect.x: self.textRect.x + self.textRect.w, self.textRect.y: self.textRect.y + self.textRect.h]
-            map_model_text = np.absolute(map_model_text - 1) * 255
-            map_model_text_surface = pygame.surfarray.make_surface(map_model_text)
-            self.surface.blit(map_model_text_surface, self.textRect)
-
-        # Render Car
+        # Draw Car
         self.surface.blit(car_surface_transformed, car_coordinates)
 
-        # Display Text information
+        # Draw Text information
         font = pygame.font.SysFont("Calibri", 30, True, False)
         textStr = "Collision: " + ("True" if model_data["collision"] else "False")
         textStr += "  Score: " + str(int(model_data["score"]))
@@ -68,16 +51,18 @@ class View():
         textRect = text.get_rect()
         textRect.move(20, 20)
         self.surface.blit(text, textRect)
-        self.textRect = textRect
 
-        # draw checkpoints
-        checkpoints = model_data["checkpoints"]
-        for checkpoint in checkpoints:
-            pygame.draw.line(self.surface, (0,255,0), checkpoint[0], checkpoint[1], View.checkpoint_size)
+        # Draw checkpoints
+        self.draw_checkpoints(model_data)
+
+        # Draw wall detections
+        wall_detections = model_data["car"]["wall_detections"]
+        if wall_detections.size > 0 and wall_detections.ndim == 2:
+            for wall_detection in wall_detections:
+                pygame.draw.line(self.surface, (255,255,0), model_data["car"]["carPosition"].astype("int"), wall_detection, View.checkpoint_size)
 
         # Update the screen surface
-        pygame.display.update([map_rect_to_update, car_rect, textRect])
-        self.previous_car_rect = car_rect
+        pygame.display.update([car_rect, textRect])
 
         # Check user inputs
         results = {
@@ -140,21 +125,7 @@ class View():
         self.surface.blit(car_surface_transformed, car_coordinates)
 
         # draw checkpoints
-        orientation = radians(90)
-        rot_matrix = np.array([[cos(orientation), -sin(orientation)],[sin(orientation), cos(orientation)]])
-
-        checkpoints = model_data["checkpoints"]
-        for checkpoint in checkpoints:
-            pygame.draw.line(self.surface, (0,255,0), checkpoint[0], checkpoint[1], View.checkpoint_size)
-            vect = (checkpoint[1] - checkpoint[0])
-            vect /= np.linalg.norm(vect)
-            vect_perpendicular = vect.dot(rot_matrix)
-            vect_perpendicular /= np.linalg.norm(vect_perpendicular)
-            center_point = (checkpoint[0] + checkpoint[1]) / 2
-            point_start_arrow1 = center_point - View.checkpoint_arrow_length / 2 * vect
-            point_start_arrow2 = center_point + View.checkpoint_arrow_length / 2 * vect
-            pygame.draw.line(self.surface, (0,255,0), point_start_arrow1, center_point + View.checkpoint_arrow_length * vect_perpendicular , View.checkpoint_size)
-            pygame.draw.line(self.surface, (0,255,0), point_start_arrow2, center_point + View.checkpoint_arrow_length * vect_perpendicular , View.checkpoint_size)
+        self.draw_checkpoints(model_data)
         if(self.checkpoint1_pos.size > 0):
             pygame.draw.line(self.surface, (255,0,0), self.checkpoint1_pos, pygame.mouse.get_pos(), View.checkpoint_size)
 
@@ -218,6 +189,23 @@ class View():
                     if(self.check_inside_screen(event.pos)):
                         results["points_unselected"].append([event.pos[0], event.pos[1]])
         return results
+
+    def draw_checkpoints(self, model_data):
+        orientation = radians(90)
+        rot_matrix = np.array([[cos(orientation), -sin(orientation)],[sin(orientation), cos(orientation)]])
+
+        checkpoints = model_data["checkpoints"]
+        for checkpoint in checkpoints:
+            pygame.draw.line(self.surface, (0,255,0), checkpoint[0], checkpoint[1], View.checkpoint_size)
+            vect = (checkpoint[1] - checkpoint[0])
+            vect /= np.linalg.norm(vect)
+            vect_perpendicular = vect.dot(rot_matrix)
+            vect_perpendicular /= np.linalg.norm(vect_perpendicular)
+            center_point = (checkpoint[0] + checkpoint[1]) / 2
+            point_start_arrow1 = center_point - View.checkpoint_arrow_length / 2 * vect
+            point_start_arrow2 = center_point + View.checkpoint_arrow_length / 2 * vect
+            pygame.draw.line(self.surface, (0,255,0), point_start_arrow1, center_point + View.checkpoint_arrow_length * vect_perpendicular , View.checkpoint_size)
+            pygame.draw.line(self.surface, (0,255,0), point_start_arrow2, center_point + View.checkpoint_arrow_length * vect_perpendicular , View.checkpoint_size)
 
     def check_inside_screen(self, point):
         return point[0] >= 0 and point[0] < self.surface.get_width() and point[1] >= 0 and point[1] < self.surface.get_height()

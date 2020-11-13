@@ -42,7 +42,8 @@ class Controller:
                 "car": {
                     "carPosition": self.transform_coords_view_and_model(self.model.car.get_position()),
                     "carOrientation": self.model.get_car_orientation(),
-                    "carSize": self.model.car.get_size()
+                    "carSize": self.model.car.get_size(),
+                    "wall_detections": self.transform_array_of_coords_view_and_model(self.model.get_wall_detections())
                 },
                 "collision": self.model.get_collision(),
                 "score": self.model.get_score(),
